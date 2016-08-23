@@ -1,14 +1,10 @@
-/****************************************************************************************************************************************************/
-/*  Purpose:    Simple demo of using libhackrf to transmit a two-tone beep.                                                                         */
-/*  Author:     Copyright (c) 2015, W.B.Hill ( M1BKF) <bugs@wbh.org> All rights reserved.                                                           */
-/*  License:    Derived from hackrf_transfer, any parts written by my released into the public domain.                                              */
-/****************************************************************************************************************************************************/
-
 /*
- * This transmits at the transmit frequency, freq, +800KHz (the HamRadio APRS frequency here.)
- * At a sample rate of 8M samples/s, for 800KHz there are 10 samples per carrier wave.
+ * Copyright (c) 2016, Denis Bodor
  *
- * The Mark and Space frequcies are 1200Hz and 2200Hz respectively, so 6666 and 3636 samples per wave.
+ * Simple and ugly try to send ASK-OOK with hackrf
+ * Derived from W.B.Hill ( M1BKF) <bugs@wbh.org> code hackrf_beep.c
+ * (https://github.com/rufty/hackrf_beep)
+ *
  */
 
 #include <math.h>
@@ -28,40 +24,36 @@
 #define OOK_NBR_BITS	24		// nbr of bits in the message
 #define OOK_MSG_SIZE	OOK_START+(OOK_BIT*OOK_NBR_BITS)+OOK_PAUSE
 
-// Transmit frequency.
+// Transmit frequency
 const uint64_t freq = 27195000L;
-// Sample rate.
+// Sample rate
 const uint32_t samplerate = 8000000;
-// Transmitter IF gain.
+// Transmitter IF gain
 const unsigned int gain = 47;
 
 int8_t txbuffer[OOK_MSG_SIZE] = { 0 };
 int bufferOffset;
 
-// Handle for the HackRF
 static hackrf_device* device = NULL;
 
-// Time to give up?
 volatile bool do_exit = false;
 
-
-// Dump more data to the HackRF
+// Giving data to the HackRF
 int tx_callback(hackrf_transfer* transfer)
 {
 	// How much to do?
 	size_t count = transfer->valid_length;
-	// Copy it over.
+	
 	int i = 0;
-
 	while (i < count) {
+		// Not really sure what i'm doing here...
 		(transfer->buffer)[i++] = txbuffer[bufferOffset];  // I
 		(transfer->buffer)[i++] = txbuffer[bufferOffset];  // Q
 		bufferOffset++;
-		bufferOffset %= OOK_MSG_SIZE;
+		bufferOffset %= OOK_MSG_SIZE; // loop on the buffer
 	}
 	return 0 ;
 }
-
 
 // Deal with interruptions.
 void sigint_callback_handler (int signum)
@@ -108,113 +100,38 @@ int main (int argc, char** argv)
 	}
 	printf("\n");
 
-	/*
-	// bit 0
-	s = OOK_START+(OOK_BIT*0)+OOK_0;
-    while (s < OOK_START+(OOK_BIT*1)) { txbuffer[s] = 127; s++; }
-	// bit 1
-	s = OOK_START+(OOK_BIT*1)+OOK_1;
-	while (s < OOK_START+(OOK_BIT*2)) { txbuffer[s] = 127; s++; }
-	// bit 2
-	s = OOK_START+(OOK_BIT*2)+OOK_0;
-	while (s < OOK_START+(OOK_BIT*3)) { txbuffer[s] = 127; s++; }
-	// bit 3
-	s = OOK_START+(OOK_BIT*3)+OOK_1;
-	while (s < OOK_START+(OOK_BIT*4)) { txbuffer[s] = 127; s++; }
-	// bit 4
-	s = OOK_START+(OOK_BIT*4)+OOK_0;
-	while (s < OOK_START+(OOK_BIT*5)) { txbuffer[s] = 127; s++; }
-	// bit 5
-	s = OOK_START+(OOK_BIT*5)+OOK_0;
-	while (s < OOK_START+(OOK_BIT*6)) { txbuffer[s] = 127; s++; }
-	// bit 6
-	s = OOK_START+(OOK_BIT*6)+OOK_1;
-	while (s < OOK_START+(OOK_BIT*7)) { txbuffer[s] = 127; s++; }
-	// bit 7
-	s = OOK_START+(OOK_BIT*7)+OOK_0;
-	while (s < OOK_START+(OOK_BIT*8)) { txbuffer[s] = 127; s++; }
-	// bit 8
-	s = OOK_START+(OOK_BIT*8)+OOK_0;
-	while (s < OOK_START+(OOK_BIT*9)) { txbuffer[s] = 127; s++; }
-	// bit 9
-	s = OOK_START+(OOK_BIT*9)+OOK_1;
-	while (s < OOK_START+(OOK_BIT*10)) { txbuffer[s] = 127; s++; }
-	// bit 10
-	s = OOK_START+(OOK_BIT*10)+OOK_0;
-	while (s < OOK_START+(OOK_BIT*11)) { txbuffer[s] = 127; s++; }
-	// bit 11
-	s = OOK_START+(OOK_BIT*11)+OOK_1;
-	while (s < OOK_START+(OOK_BIT*12)) { txbuffer[s] = 127; s++; }
-	// bit 12
-	s = OOK_START+(OOK_BIT*12)+OOK_0;
-	while (s < OOK_START+(OOK_BIT*13)) { txbuffer[s] = 127; s++; }
-	// bit 13
-	s = OOK_START+(OOK_BIT*13)+OOK_1;
-	while (s < OOK_START+(OOK_BIT*14)) { txbuffer[s] = 127; s++; }
-	// bit 14
-	s = OOK_START+(OOK_BIT*14)+OOK_1;
-	while (s < OOK_START+(OOK_BIT*15)) { txbuffer[s] = 127; s++; }
-	// bit 15
-	s = OOK_START+(OOK_BIT*15)+OOK_0;
-	while (s < OOK_START+(OOK_BIT*16)) { txbuffer[s] = 127; s++; }
-	// bit 16
-	s = OOK_START+(OOK_BIT*16)+OOK_1;
-	while (s < OOK_START+(OOK_BIT*17)) { txbuffer[s] = 127; s++; }
-	// bit 17
-	s = OOK_START+(OOK_BIT*17)+OOK_1;
-	while (s < OOK_START+(OOK_BIT*18)) { txbuffer[s] = 127; s++; }
-	// bit 18
-	s = OOK_START+(OOK_BIT*18)+OOK_1;
-	while (s < OOK_START+(OOK_BIT*19)) { txbuffer[s] = 127; s++; }
-	// bit 19
-	s = OOK_START+(OOK_BIT*19)+OOK_1;
-	while (s < OOK_START+(OOK_BIT*20)) { txbuffer[s] = 127; s++; }
-	// bit 20
-	s = OOK_START+(OOK_BIT*20)+OOK_0;
-	while (s < OOK_START+(OOK_BIT*21)) { txbuffer[s] = 127; s++; }
-	// bit 21
-	s = OOK_START+(OOK_BIT*21)+OOK_0;
-	while (s < OOK_START+(OOK_BIT*22)) { txbuffer[s] = 127; s++; }
-	// bit 22
-	s = OOK_START+(OOK_BIT*22)+OOK_1;
-	while (s < OOK_START+(OOK_BIT*23)) { txbuffer[s] = 127; s++; }
-	// bit 23
-	s = OOK_START+(OOK_BIT*23)+OOK_1;
-	while (s < OOK_START+(OOK_BIT*24)) { txbuffer[s] = 127; s++; }
-	*/
-
-	/* Setup the HackRF for transmitting at full power, 8M samples/s, 144MHz */
+	/* Setup the HackRF for transmitting at full power, 8M samples/s, ~27MHz */
 	fprintf(stderr, "Setting up the HackRF...\n");
 
-	// Initialize the HackRF.
+	// Initialize the HackRF
 	result = hackrf_init();
 	if (result != HACKRF_SUCCESS) {
 		fprintf(stderr, "hackrf_init() failed: %s (%d)\n", hackrf_error_name(result), result);
 		return EXIT_FAILURE;
 	}
 
-	// Open the HackRF.
+	// Open the HackRF
 	result = hackrf_open(&device);
 	if (result != HACKRF_SUCCESS) {
 		fprintf(stderr, "hackrf_open() failed: %s (%d)\n", hackrf_error_name(result), result);
 		return EXIT_FAILURE;
 	}
 
-	// Set the sample rate.
+	// Set the sample rate
 	result = hackrf_set_sample_rate_manual(device, samplerate, 1);
 	if(result != HACKRF_SUCCESS) {
 		fprintf(stderr, "hackrf_sample_rate_set() failed: %s (%d)\n", hackrf_error_name(result), result);
 		return EXIT_FAILURE;
 	}
 
-	// Set the filter bandwith to default.
+	// Set the filter bandwith to default
 	result = hackrf_set_baseband_filter_bandwidth(device, hackrf_compute_baseband_filter_bw_round_down_lt(samplerate));
 	if (result != HACKRF_SUCCESS) {
 		fprintf(stderr, "hackrf_baseband_filter_bandwidth_set() failed: %s (%d)\n", hackrf_error_name(result), result);
 		return EXIT_FAILURE;
 	}
 
-	// Set the gain.
+	// Set the gain
 	result = hackrf_set_txvga_gain(device, gain);
 	result |= hackrf_start_tx(device, tx_callback, NULL);
 	if (result != HACKRF_SUCCESS) {
@@ -222,14 +139,14 @@ int main (int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
-	// Set the transmit frequency.
+	// Set the transmit frequency
 	result = hackrf_set_freq(device, freq);
 	if (result != HACKRF_SUCCESS) {
 		fprintf(stderr, "hackrf_set_freq() failed: %s (%d)\n", hackrf_error_name(result), result);
 		return EXIT_FAILURE;
 	}
 
-	// Turn on the amp.
+	// Turn on the amp
 	result = hackrf_set_amp_enable(device, (uint8_t)1) ;
 	if (result != HACKRF_SUCCESS) {
 		fprintf(stderr, "hackrf_set_amp_enable() failed: %s (%d)\n", hackrf_error_name(result), result);
@@ -251,6 +168,7 @@ int main (int argc, char** argv)
 	} else {
 		fprintf(stderr, "\nExiting... hackrf_is_streaming() result: %s (%d)\n", hackrf_error_name(result), result);
 	}
+
 	// Shut down the HackRF.
 	if (device != NULL) {
 		result = hackrf_stop_tx(device);
@@ -263,6 +181,6 @@ int main (int argc, char** argv)
 		}
 		hackrf_exit();
 	}
-	// That's all, folks!!!
+
 	return EXIT_SUCCESS;
 }
