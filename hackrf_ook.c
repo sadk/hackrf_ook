@@ -23,6 +23,7 @@
 #define OOK_PAUSE		244384	// trailer
 #define OOK_NBR_BITS	24		// nbr of bits in the message
 #define OOK_MSG_SIZE	OOK_START+(OOK_BIT*OOK_NBR_BITS)+OOK_PAUSE
+#define OOK_NEGATE		0
 
 // Transmit frequency
 const uint64_t freq = 27195000L;
@@ -31,8 +32,13 @@ const uint32_t samplerate = 8000000;
 // Transmitter IF gain
 const unsigned int gain = 47;
 
-int8_t txbuffer[OOK_MSG_SIZE] = { 0 };
+//int8_t txbuffer[OOK_MSG_SIZE] = { 0 };
+int8_t *txbuffer;
 int bufferOffset;
+
+// bits to send
+//char bits[] = "010100100101011011110011";
+char *bits;
 
 static hackrf_device* device = NULL;
 
@@ -48,7 +54,8 @@ int tx_callback(hackrf_transfer* transfer)
 	while (i < count) {
 		// Not really sure what i'm doing here...
 		(transfer->buffer)[i++] = txbuffer[bufferOffset];  // I
-		(transfer->buffer)[i++] = txbuffer[bufferOffset];  // Q
+		//(transfer->buffer)[i++] = txbuffer[bufferOffset];  // Q
+		(transfer->buffer)[i++] = 0;  // Q
 		bufferOffset++;
 		bufferOffset %= OOK_MSG_SIZE; // loop on the buffer
 	}
@@ -62,21 +69,107 @@ void sigint_callback_handler (int signum)
 	do_exit = true;
 }
 
+void printhelp(char *binname) {
+	printf("Usage : %s [OPTIONS]\n", binname);
+	printf(" -s us                preamble duration in microseconds (default -s %d)\n", OOK_START/8);
+	printf(" -b us                overall bit duration in microseconds (default -b %d)\n", OOK_BIT/8);
+	printf(" -0 us                width of gap for bit 0 in microseconds (default -0 %d)\n", OOK_0/8);
+	printf(" -1 us                width of gap for bit 1 in microseconds (default -1 %d)\n", OOK_1/8);
+	printf(" -p us                trailing duration after message in microseconds (default -p %d)\n", OOK_PAUSE/8);
+	printf(" -m binary_message    send this bits  (default -m %s)\n", bits);
+	printf(" -n                   bitwise NOT all bit\n");
+	printf(" -h                   show this help\n");
+}
 
 int main (int argc, char** argv)
 {
 	int result;
+	int retopt;
+	int opt = 0;
+	char *endptr;
 
-	// bits to send
-	char bits[] = "010100100101011011110011";
+	int ook_start = OOK_START;
+	int ook_bit = OOK_BIT;
+	int ook_0 = OOK_0;
+	int ook_1 = OOK_1;
+	int ook_pause = OOK_PAUSE;
+	int ook_nbr_bits = OOK_NBR_BITS;
+	int ook_msg_size = OOK_MSG_SIZE;
+	int ook_negate = OOK_NEGATE;
 
-	// Catch signals that we want to handle gracefully.
-	signal(SIGINT, &sigint_callback_handler);
-	signal(SIGILL, &sigint_callback_handler);
-	signal(SIGFPE, &sigint_callback_handler);
-	signal(SIGSEGV, &sigint_callback_handler);
-	signal(SIGTERM, &sigint_callback_handler);
-	signal(SIGABRT, &sigint_callback_handler);
+	while ((retopt = getopt(argc, argv, "hs:b:0:1:p:m:n")) != -1) {
+		switch (retopt) {
+			case 'h':
+				printhelp(argv[0]);
+				return(EXIT_SUCCESS);
+				opt++;
+				break;
+			case 's':
+				ook_start = (int)strtol(optarg, &endptr, 10) * 8;
+				if (endptr == optarg || ook_start == 0) {
+					printf("You must specify a valid number\n");
+					return(EXIT_SUCCESS);
+				}
+				opt++;
+				break;
+			case 'b':
+				ook_bit = (int)strtol(optarg, &endptr, 10) * 8;
+				if (endptr == optarg || ook_bit == 0) {
+					printf("You must specify a valid number\n");
+					return(EXIT_SUCCESS);
+				}
+				opt++;
+				break;
+			case '0':
+				ook_0 = (int)strtol(optarg, &endptr, 10) * 8;
+				if (endptr == optarg || ook_0 == 0) {
+					printf("You must specify a valid number\n");
+					return(EXIT_SUCCESS);
+				}
+				opt++;
+				break;
+			case '1':
+				ook_1 = (int)strtol(optarg, &endptr, 10) * 8;
+				if (endptr == optarg || ook_1 == 0) {
+					printf("You must specify a valid number\n");
+					return(EXIT_SUCCESS);
+				}
+				opt++;
+				break;
+			case 'p':
+				ook_pause = (int)strtol(optarg, &endptr, 10) * 8;
+				if (endptr == optarg || ook_pause == 0) {
+					printf("You must specify a valid number\n");
+					return(EXIT_SUCCESS);
+				}
+				opt++;
+				break;
+			case 'm':
+				ook_nbr_bits = strlen(optarg);
+				bits = strdup(optarg);
+				opt++;
+				break;
+			case 'n':
+				ook_negate = 1;
+				opt++;
+				break;
+			default:
+				printhelp(argv[0]);
+				return(EXIT_FAILURE);
+		}
+	}
+
+	if(bits == NULL) 
+		bits = strdup("010100100101011011110011");
+
+	ook_msg_size = ook_start+(ook_bit*ook_nbr_bits)+ook_pause;
+	printf("Allocating %d samples (%d bytes)\n", ook_msg_size, ook_msg_size*sizeof(int8_t));
+	txbuffer = malloc(ook_msg_size*sizeof(int8_t));
+	if (txbuffer == NULL) {
+		printf("Error allocating memory!\n");
+		return(EXIT_FAILURE);
+	}
+	memset(txbuffer, 0, ook_msg_size*sizeof(int8_t));
 
 	fprintf(stderr, "Precalculating lookup tables...\n");
 
@@ -85,20 +178,28 @@ int main (int argc, char** argv)
 	 */
 	// preamble
 	int s = 0;
-	while (s < OOK_START) { txbuffer[s] = 127;	s++; }
+	while (s < ook_start) { txbuffer[s] = 127;	s++; }
 
 	// bits
-	for (int i = 0; i < OOK_NBR_BITS; i++) {
+	for (int i = 0; i < ook_nbr_bits; i++) {
 		if (bits[i] == '0') {
-			s = OOK_START+(OOK_BIT*i)+OOK_0;
+			s = ook_negate > 0 ? ook_start+(ook_bit*i)+ook_1 : ook_start+(ook_bit*i)+ook_0;
 			printf("0");
 		} else {
-			s = OOK_START+(OOK_BIT*i)+OOK_1;
+			s = ook_negate > 0 ? ook_start+(ook_bit*i)+ook_0 : ook_start+(ook_bit*i)+ook_1;
 			printf("1");
 		}
-		while (s < OOK_START+(OOK_BIT*(i+1))) { txbuffer[s] = 127; s++; }
+		while (s < ook_start+(ook_bit*(i+1))) { txbuffer[s] = 127; s++; }
 	}
 	printf("\n");
+
+	// Catch signals that we want to handle gracefully.
+	signal(SIGINT, &sigint_callback_handler);
+	signal(SIGILL, &sigint_callback_handler);
+	signal(SIGFPE, &sigint_callback_handler);
+	signal(SIGSEGV, &sigint_callback_handler);
+	signal(SIGTERM, &sigint_callback_handler);
+	signal(SIGABRT, &sigint_callback_handler);
 
 	/* Setup the HackRF for transmitting at full power, 8M samples/s, ~27MHz */
 	fprintf(stderr, "Setting up the HackRF...\n");
@@ -181,6 +282,8 @@ int main (int argc, char** argv)
 		}
 		hackrf_exit();
 	}
+
+	free(txbuffer);
 
 	return EXIT_SUCCESS;
 }

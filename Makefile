@@ -12,3 +12,7 @@ ${TARGET}: ${TARGET}.o
 
 clean:
 	rm -rf ${TARGET}.o ${TARGET}
+
+mrproper: clean
+	rm *~
+
