@@ -68,7 +68,7 @@ int main (int argc, char** argv)
 	int result;
 
 	// bits to send
-	char bits[] = "01010010 01010110 11110011";
+	char bits[] = "010100100101011011110011";
 
 	// Catch signals that we want to handle gracefully.
 	signal(SIGINT, &sigint_callback_handler);
