@@ -5,23 +5,11 @@
 /****************************************************************************************************************************************************/
 
 /*
- * This transmits at the transmit frequency, tf, +800KHz (the HamRadio APRS frequency here.)
+ * This transmits at the transmit frequency, freq, +800KHz (the HamRadio APRS frequency here.)
  * At a sample rate of 8M samples/s, for 800KHz there are 10 samples per carrier wave.
  *
  * The Mark and Space frequcies are 1200Hz and 2200Hz respectively, so 6666 and 3636 samples per wave.
- *
- *
- *
- * Assuming that the signal switches between mark and space at arbitraty times, the carrier
- * will be at one of 10 possible phase angles, the carrier offset, co. The modulating signals
- * similarly at offsets of mo and so. To prevent "chirps" in the signal at the frequence of
- * transition from mark to space, there should be no discontinuity in either the modulating or
- * the carrier waves. So the mark and space waveforms are pre-calculated for all possible phase
- * angles (for speed), and changover starts from the corresponding entry, for smooth transition.
  */
-
-// gcc -std=c11 -o hackrf_beep hackrf_beep.c -lhackrf
-
 
 #include <math.h>
 #include <stdio.h>
@@ -32,31 +20,23 @@
 #include <stdbool.h>
 #include <libhackrf/hackrf.h>
 
+#define OOK_START		49248	// nbr samples for preamble
+#define OOK_BIT			16832	// nbr samples for a bit
+#define OOK_0			10944	// start position for a 0 (relative to OOK_BIT)
+#define OOK_1			5536	// start position for a 1 (relative to OOK_BIT)
+#define OOK_PAUSE		244384	// trailer
+#define OOK_NBR_BITS	24		// nbr of bits in the message
+#define OOK_MSG_SIZE	OOK_START+(OOK_BIT*OOK_NBR_BITS)+OOK_PAUSE
+
 // Transmit frequency.
-const uint64_t tf = 144000000L;
+const uint64_t freq = 27195000L;
 // Sample rate.
-const uint32_t sr = 8000000;
+const uint32_t samplerate = 8000000;
 // Transmitter IF gain.
 const unsigned int gain = 47;
-// Depth of modulation.
-const double dm = 4.0 / 3.0;
-// Precalc, its used a bit.
-const double tau = 2.0 * M_PI;
 
-// Lookup tables, mark and space, one wave long at 8M samples/s
-int8_t mi[6666][10];
-int8_t mq[6666][10];
-int8_t si[3636][10];
-int8_t sq[3636][10];
-
-// Playback phase offsets for carrier, mark and space.
-int co, mo, so;
-
-// Sample number.
-long sn;
-
-// Mark or space?
-bool ms;
+int8_t txbuffer[OOK_MSG_SIZE] = { 0 };
+int bufferOffset;
 
 // Handle for the HackRF
 static hackrf_device* device = NULL;
@@ -65,40 +45,19 @@ static hackrf_device* device = NULL;
 volatile bool do_exit = false;
 
 
-// Dump more data to the HackRF.
+// Dump more data to the HackRF
 int tx_callback(hackrf_transfer* transfer)
 {
 	// How much to do?
 	size_t count = transfer->valid_length;
 	// Copy it over.
 	int i = 0;
-	// Mark or space?
-	if (ms) {
-		while (i < count) {
-			(transfer->buffer)[i++] = mi[mo][co];
-			(transfer->buffer)[i++] = mq[mo][co];
-			co++;
-			co %= 10;
-			mo++;
-			mo %= 6666;
-		}
-		so = 3636 * mo / 6666;
-	} else {
-		while (i < count) {
-			(transfer->buffer)[i++] = si[so][co];
-			(transfer->buffer)[i++] = sq[so][co];
-			co++;
-			co %= 10;
-			so++;
-			so %= 3636;
-		}
-		mo = 6666 * so / 3636;
-	}
-	sn += count;
-	// Every second, change.
-	if (sn >= sr) {
-		ms = !ms;
-		sn -= sr;
+
+	while (i < count) {
+		(transfer->buffer)[i++] = txbuffer[bufferOffset];  // I
+		(transfer->buffer)[i++] = txbuffer[bufferOffset];  // Q
+		bufferOffset++;
+		bufferOffset %= OOK_MSG_SIZE;
 	}
 	return 0 ;
 }
@@ -114,21 +73,11 @@ void sigint_callback_handler (int signum)
 
 int main (int argc, char** argv)
 {
-	/*
-	 * Setup.
-	 */
-	// How did it do?
 	int result;
-	// Signal and carrier angle.
-	double sa, ca;
-	// Sample offsets.
-	co = 0;
-	mo = 0;
-	so = 0;
-	// Sample number.
-	sn = 0L;
-	// Mark or space?
-	ms = false;
+
+	// bits to send
+	char bits[] = "01010010 01010110 11110011";
+
 	// Catch signals that we want to handle gracefully.
 	signal(SIGINT, &sigint_callback_handler);
 	signal(SIGILL, &sigint_callback_handler);
@@ -136,30 +85,103 @@ int main (int argc, char** argv)
 	signal(SIGSEGV, &sigint_callback_handler);
 	signal(SIGTERM, &sigint_callback_handler);
 	signal(SIGABRT, &sigint_callback_handler);
-	// This takes a bit.
+
 	fprintf(stderr, "Precalculating lookup tables...\n");
 
 	/*
 	 * Precalc waveforms.
 	 */
-	// Lookup for 1200Hz.
-	for (int s = 0 ; s < 6666; s++) {
-		sa = s * tau / 6666.0;
-		for (int c = 0; c < 10; c++) {
-			ca = c * tau / 10.0;
-			mi[s][c] = (int8_t)(127.0 * sin(ca - dm * cos(sa)));
-			mq[s][c] = (int8_t)(127.0 * cos(ca - dm * cos(sa)));
+	// preamble
+	int s = 0;
+	while (s < OOK_START) { txbuffer[s] = 127;	s++; }
+
+	// bits
+	for (int i = 0; i < OOK_NBR_BITS; i++) {
+		if (bits[i] == '0') {
+			s = OOK_START+(OOK_BIT*i)+OOK_0;
+			printf("0");
+		} else {
+			s = OOK_START+(OOK_BIT*i)+OOK_1;
+			printf("1");
 		}
+		while (s < OOK_START+(OOK_BIT*(i+1))) { txbuffer[s] = 127; s++; }
 	}
-	// Lookup for 2200Hz.
-	for (int s = 0 ; s < 3636; s++) {
-		sa = s * tau / 3636.0;
-		for (int c = 0; c < 10; c++) {
-			ca = c * tau / 10.0 ;
-			si[s][c] = (int8_t)(127.0 * sin(ca - dm * cos(sa)));
-			sq[s][c] = (int8_t)(127.0 * cos(ca - dm * cos(sa)));
-		}
-	}
+	printf("\n");
+
+	/*
+	// bit 0
+	s = OOK_START+(OOK_BIT*0)+OOK_0;
+    while (s < OOK_START+(OOK_BIT*1)) { txbuffer[s] = 127; s++; }
+	// bit 1
+	s = OOK_START+(OOK_BIT*1)+OOK_1;
+	while (s < OOK_START+(OOK_BIT*2)) { txbuffer[s] = 127; s++; }
+	// bit 2
+	s = OOK_START+(OOK_BIT*2)+OOK_0;
+	while (s < OOK_START+(OOK_BIT*3)) { txbuffer[s] = 127; s++; }
+	// bit 3
+	s = OOK_START+(OOK_BIT*3)+OOK_1;
+	while (s < OOK_START+(OOK_BIT*4)) { txbuffer[s] = 127; s++; }
+	// bit 4
+	s = OOK_START+(OOK_BIT*4)+OOK_0;
+	while (s < OOK_START+(OOK_BIT*5)) { txbuffer[s] = 127; s++; }
+	// bit 5
+	s = OOK_START+(OOK_BIT*5)+OOK_0;
+	while (s < OOK_START+(OOK_BIT*6)) { txbuffer[s] = 127; s++; }
+	// bit 6
+	s = OOK_START+(OOK_BIT*6)+OOK_1;
+	while (s < OOK_START+(OOK_BIT*7)) { txbuffer[s] = 127; s++; }
+	// bit 7
+	s = OOK_START+(OOK_BIT*7)+OOK_0;
+	while (s < OOK_START+(OOK_BIT*8)) { txbuffer[s] = 127; s++; }
+	// bit 8
+	s = OOK_START+(OOK_BIT*8)+OOK_0;
+	while (s < OOK_START+(OOK_BIT*9)) { txbuffer[s] = 127; s++; }
+	// bit 9
+	s = OOK_START+(OOK_BIT*9)+OOK_1;
+	while (s < OOK_START+(OOK_BIT*10)) { txbuffer[s] = 127; s++; }
+	// bit 10
+	s = OOK_START+(OOK_BIT*10)+OOK_0;
+	while (s < OOK_START+(OOK_BIT*11)) { txbuffer[s] = 127; s++; }
+	// bit 11
+	s = OOK_START+(OOK_BIT*11)+OOK_1;
+	while (s < OOK_START+(OOK_BIT*12)) { txbuffer[s] = 127; s++; }
+	// bit 12
+	s = OOK_START+(OOK_BIT*12)+OOK_0;
+	while (s < OOK_START+(OOK_BIT*13)) { txbuffer[s] = 127; s++; }
+	// bit 13
+	s = OOK_START+(OOK_BIT*13)+OOK_1;
+	while (s < OOK_START+(OOK_BIT*14)) { txbuffer[s] = 127; s++; }
+	// bit 14
+	s = OOK_START+(OOK_BIT*14)+OOK_1;
+	while (s < OOK_START+(OOK_BIT*15)) { txbuffer[s] = 127; s++; }
+	// bit 15
+	s = OOK_START+(OOK_BIT*15)+OOK_0;
+	while (s < OOK_START+(OOK_BIT*16)) { txbuffer[s] = 127; s++; }
+	// bit 16
+	s = OOK_START+(OOK_BIT*16)+OOK_1;
+	while (s < OOK_START+(OOK_BIT*17)) { txbuffer[s] = 127; s++; }
+	// bit 17
+	s = OOK_START+(OOK_BIT*17)+OOK_1;
+	while (s < OOK_START+(OOK_BIT*18)) { txbuffer[s] = 127; s++; }
+	// bit 18
+	s = OOK_START+(OOK_BIT*18)+OOK_1;
+	while (s < OOK_START+(OOK_BIT*19)) { txbuffer[s] = 127; s++; }
+	// bit 19
+	s = OOK_START+(OOK_BIT*19)+OOK_1;
+	while (s < OOK_START+(OOK_BIT*20)) { txbuffer[s] = 127; s++; }
+	// bit 20
+	s = OOK_START+(OOK_BIT*20)+OOK_0;
+	while (s < OOK_START+(OOK_BIT*21)) { txbuffer[s] = 127; s++; }
+	// bit 21
+	s = OOK_START+(OOK_BIT*21)+OOK_0;
+	while (s < OOK_START+(OOK_BIT*22)) { txbuffer[s] = 127; s++; }
+	// bit 22
+	s = OOK_START+(OOK_BIT*22)+OOK_1;
+	while (s < OOK_START+(OOK_BIT*23)) { txbuffer[s] = 127; s++; }
+	// bit 23
+	s = OOK_START+(OOK_BIT*23)+OOK_1;
+	while (s < OOK_START+(OOK_BIT*24)) { txbuffer[s] = 127; s++; }
+	*/
 
 	/* Setup the HackRF for transmitting at full power, 8M samples/s, 144MHz */
 	fprintf(stderr, "Setting up the HackRF...\n");
@@ -179,14 +201,14 @@ int main (int argc, char** argv)
 	}
 
 	// Set the sample rate.
-	result = hackrf_set_sample_rate_manual(device, sr, 1);
+	result = hackrf_set_sample_rate_manual(device, samplerate, 1);
 	if(result != HACKRF_SUCCESS) {
 		fprintf(stderr, "hackrf_sample_rate_set() failed: %s (%d)\n", hackrf_error_name(result), result);
 		return EXIT_FAILURE;
 	}
 
 	// Set the filter bandwith to default.
-	result = hackrf_set_baseband_filter_bandwidth(device, hackrf_compute_baseband_filter_bw_round_down_lt(sr));
+	result = hackrf_set_baseband_filter_bandwidth(device, hackrf_compute_baseband_filter_bw_round_down_lt(samplerate));
 	if (result != HACKRF_SUCCESS) {
 		fprintf(stderr, "hackrf_baseband_filter_bandwidth_set() failed: %s (%d)\n", hackrf_error_name(result), result);
 		return EXIT_FAILURE;
@@ -201,7 +223,7 @@ int main (int argc, char** argv)
 	}
 
 	// Set the transmit frequency.
-	result = hackrf_set_freq (device, tf);
+	result = hackrf_set_freq(device, freq);
 	if (result != HACKRF_SUCCESS) {
 		fprintf(stderr, "hackrf_set_freq() failed: %s (%d)\n", hackrf_error_name(result), result);
 		return EXIT_FAILURE;
