@@ -26,6 +26,7 @@
 #define OOK_MSG_SIZE	OOK_START+(OOK_BIT*OOK_NBR_BITS)+OOK_PAUSE
 #define OOK_NEGATE		0
 #define OOK_DEFAULT_MSG "010100100101011011110011"
+#define OOK_CARRIER		27000		// carrier frequency
 
 // Transmit frequency
 uint64_t freq = OOK_FREQ;
@@ -46,6 +47,7 @@ int ook_pause = OOK_PAUSE;
 int ook_nbr_bits = OOK_NBR_BITS;
 int ook_msg_size = OOK_MSG_SIZE;
 int ook_negate = OOK_NEGATE;
+int ook_carrier = OOK_CARRIER;
 
 const double tau = 2.0 * M_PI;
 
@@ -86,6 +88,7 @@ void printhelp(char *binname)
 	printf("Copyright (c) 2016 - Denis Bodor\n\n");
 	printf("Usage : %s [OPTIONS]\n", binname);
 	printf(" -f hertz             transmit frequency (default -f %llu)\n", OOK_FREQ);
+	printf(" -c hertz             carrier frequency (default -f %d)\n", OOK_CARRIER);
 	printf(" -s us                preamble duration in microseconds (default -s %d)\n", OOK_START/8);
 	printf(" -b us                overall bit duration in microseconds (default -b %d)\n", OOK_BIT/8);
 	printf(" -0 us                width of gap for bit 0 in microseconds (default -0 %d)\n", OOK_0/8);
@@ -103,14 +106,21 @@ int main (int argc, char** argv)
 	int opt = 0;
 	char *endptr;
 
-
 	double carrierAngle;
 
-	while ((retopt = getopt(argc, argv, "hf:s:b:0:1:p:m:n")) != -1) {
+	while ((retopt = getopt(argc, argv, "hf:c:s:b:0:1:p:m:n")) != -1) {
 		switch (retopt) {
 			case 'f':
 				freq = (uint64_t)strtoll(optarg, &endptr, 10);
 				if (endptr == optarg || freq == 0) {
+					printf("You must specify a valid number\n");
+					return(EXIT_FAILURE);
+				}
+				opt++;
+				break;
+			case 'c':
+				ook_carrier = (int)strtol(optarg, &endptr, 10);
+				if (endptr == optarg || ook_carrier == 0) {
 					printf("You must specify a valid number\n");
 					return(EXIT_FAILURE);
 				}
@@ -193,13 +203,18 @@ int main (int argc, char** argv)
 	fprintf(stderr, "Precalculating lookup tables...\n");
 
 	/*
-	 * Precalc waveforms.
+	 * Precalc waveforms
+	 * We need to amplitute modulate a signal on top of the base frequency
+	 * So we use sin() and cos() and a full wave to make samples
+	 * A full wave is a complete angle rotation (2*Pi or Tau, in radian)
+	 * This take samprate/carrier_freq samples...
+	 * So when we pulse, we pulse carrier_freq modulate on top of base frequency...
 	 */
 	// preamble
 	int c = 0;
 	int s = 0;
-	// How many sample to have a full wave for 27Khz carrier freq ?
-	int full = samplerate/27000;
+	// How many samples to have a full wave of the carrier freq ?
+	int full = samplerate/ook_carrier;
 	if(s < ook_start)
 		printf("S");
 	while (s < ook_start) {
@@ -234,7 +249,7 @@ int main (int argc, char** argv)
 		printf("P");
 	printf("\n");
 
-	printf("%d bits to transmit at %llu Hz\n", ook_nbr_bits, freq);
+	printf("%d bits to transmit at %llu Hz with a carrier frequency of %d Hz\n", ook_nbr_bits, freq, ook_carrier);
 	printf("Preamble:%d(%dus)   pause:%d(%dus)   bit:%d(%dus)   0:%d(%dus)   1:%d(%dus)\n",
 			ook_start, ook_start/8,
 			ook_pause, ook_pause/8,
