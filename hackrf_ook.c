@@ -16,18 +16,19 @@
 #include <stdbool.h>
 #include <libhackrf/hackrf.h>
 
-#define OOK_START		49248	// nbr samples for preamble
-#define OOK_BIT			16832	// nbr samples for a bit
-#define OOK_0			10944	// start position for a 0 (relative to OOK_BIT)
-#define OOK_1			5536	// start position for a 1 (relative to OOK_BIT)
-#define OOK_PAUSE		244384	// trailer
-#define OOK_NBR_BITS	24		// nbr of bits in the message
+#define OOK_FREQ		27195000ULL	// transmit frequency
+#define OOK_START		49248		// nbr samples for preamble
+#define OOK_BIT			16832		// nbr samples for a bit
+#define OOK_0			10944		// start position for a 0 (relative to OOK_BIT)
+#define OOK_1			5536		// start position for a 1 (relative to OOK_BIT)
+#define OOK_PAUSE		244384		// trailer
+#define OOK_NBR_BITS	24			// nbr of bits in the message
 #define OOK_MSG_SIZE	OOK_START+(OOK_BIT*OOK_NBR_BITS)+OOK_PAUSE
 #define OOK_NEGATE		0
 #define OOK_DEFAULT_MSG "010100100101011011110011"
 
 // Transmit frequency
-const uint64_t freq = 27195000L;
+uint64_t freq = OOK_FREQ;
 // Sample rate
 const uint32_t samplerate = 8000000;
 // Transmitter IF gain
@@ -38,7 +39,6 @@ int8_t *txbuffer;
 int bufferOffset;
 
 // bits to send
-//char bits[] = "010100100101011011110011";
 char *bits;
 
 static hackrf_device* device = NULL;
@@ -70,10 +70,12 @@ void sigint_callback_handler (int signum)
 	do_exit = true;
 }
 
-void printhelp(char *binname) {
+void printhelp(char *binname)
+{
 	printf("HackRF One ASK-OOK Emitter v0.0.1\n");
 	printf("Copyright (c) 2016 - Denis Bodor\n\n");
 	printf("Usage : %s [OPTIONS]\n", binname);
+	printf(" -f hertz             transmit frequency (default -f %llu)\n", OOK_FREQ);
 	printf(" -s us                preamble duration in microseconds (default -s %d)\n", OOK_START/8);
 	printf(" -b us                overall bit duration in microseconds (default -b %d)\n", OOK_BIT/8);
 	printf(" -0 us                width of gap for bit 0 in microseconds (default -0 %d)\n", OOK_0/8);
@@ -100,8 +102,16 @@ int main (int argc, char** argv)
 	int ook_msg_size = OOK_MSG_SIZE;
 	int ook_negate = OOK_NEGATE;
 
-	while ((retopt = getopt(argc, argv, "hs:b:0:1:p:m:n")) != -1) {
+	while ((retopt = getopt(argc, argv, "hf:s:b:0:1:p:m:n")) != -1) {
 		switch (retopt) {
+			case 'f':
+				freq = (uint64_t)strtoll(optarg, &endptr, 10);
+				if (endptr == optarg || freq == 0) {
+					printf("You must specify a valid number\n");
+					return(EXIT_FAILURE);
+				}
+				opt++;
+				break;
 			case 'h':
 				printhelp(argv[0]);
 				return(EXIT_SUCCESS);
@@ -111,7 +121,7 @@ int main (int argc, char** argv)
 				ook_start = (int)strtol(optarg, &endptr, 10) * 8;
 				if (endptr == optarg || ook_start == 0) {
 					printf("You must specify a valid number\n");
-					return(EXIT_SUCCESS);
+					return(EXIT_FAILURE);
 				}
 				opt++;
 				break;
@@ -119,7 +129,7 @@ int main (int argc, char** argv)
 				ook_bit = (int)strtol(optarg, &endptr, 10) * 8;
 				if (endptr == optarg || ook_bit == 0) {
 					printf("You must specify a valid number\n");
-					return(EXIT_SUCCESS);
+					return(EXIT_FAILURE);
 				}
 				opt++;
 				break;
@@ -127,7 +137,7 @@ int main (int argc, char** argv)
 				ook_0 = (int)strtol(optarg, &endptr, 10) * 8;
 				if (endptr == optarg || ook_0 == 0) {
 					printf("You must specify a valid number\n");
-					return(EXIT_SUCCESS);
+					return(EXIT_FAILURE);
 				}
 				opt++;
 				break;
@@ -135,7 +145,7 @@ int main (int argc, char** argv)
 				ook_1 = (int)strtol(optarg, &endptr, 10) * 8;
 				if (endptr == optarg || ook_1 == 0) {
 					printf("You must specify a valid number\n");
-					return(EXIT_SUCCESS);
+					return(EXIT_FAILURE);
 				}
 				opt++;
 				break;
@@ -143,7 +153,7 @@ int main (int argc, char** argv)
 				ook_pause = (int)strtol(optarg, &endptr, 10) * 8;
 				if (endptr == optarg || ook_pause == 0) {
 					printf("You must specify a valid number\n");
-					return(EXIT_SUCCESS);
+					return(EXIT_FAILURE);
 				}
 				opt++;
 				break;
@@ -195,6 +205,8 @@ int main (int argc, char** argv)
 		while (s < ook_start+(ook_bit*(i+1))) { txbuffer[s] = 127; s++; }
 	}
 	printf("\n");
+
+	printf("%d bits to transmit at %llu Hz\n", ook_nbr_bits, freq);
 
 	// Catch signals that we want to handle gracefully.
 	signal(SIGINT, &sigint_callback_handler);

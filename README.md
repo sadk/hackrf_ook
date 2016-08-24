@@ -6,6 +6,7 @@ This is an attempt to make [HackRF One](https://greatscottgadgets.com/hackrf) em
 
 Current available options are :
 
+- `-f hertz` : transmit frequency (default -f 27195000)
 - `-s µs` : preamble duration in microseconds (default -s 6156)
 - `-b µs` : overall bit duration in microseconds (default -b 2104)
 - `-0 µs` : width of gap for bit 0 in microseconds (default -0 1368)
