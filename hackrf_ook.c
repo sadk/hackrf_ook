@@ -119,7 +119,7 @@ int main (int argc, char** argv)
 				break;
 			case 's':
 				ook_start = (int)strtol(optarg, &endptr, 10) * 8;
-				if (endptr == optarg || ook_start == 0) {
+				if (endptr == optarg || ook_start < 0) {
 					printf("You must specify a valid number\n");
 					return(EXIT_FAILURE);
 				}
@@ -151,7 +151,7 @@ int main (int argc, char** argv)
 				break;
 			case 'p':
 				ook_pause = (int)strtol(optarg, &endptr, 10) * 8;
-				if (endptr == optarg || ook_pause == 0) {
+				if (endptr == optarg || ook_pause < 0) {
 					printf("You must specify a valid number\n");
 					return(EXIT_FAILURE);
 				}
@@ -176,7 +176,7 @@ int main (int argc, char** argv)
 		bits = strdup(OOK_DEFAULT_MSG);
 
 	ook_msg_size = ook_start+(ook_bit*ook_nbr_bits)+ook_pause;
-	printf("Allocating %d samples (%d bytes)\n", ook_msg_size, ook_msg_size*sizeof(int8_t));
+	printf("Allocating %d int8_t samples (%d+%d+%d)\n", ook_msg_size, ook_start, (ook_bit*ook_nbr_bits), ook_pause);
 	txbuffer = malloc(ook_msg_size*sizeof(int8_t));
 	if (txbuffer == NULL) {
 		printf("Error allocating memory!\n");
@@ -191,6 +191,8 @@ int main (int argc, char** argv)
 	 */
 	// preamble
 	int s = 0;
+	if(s < ook_start)
+		printf("S");
 	while (s < ook_start) { txbuffer[s] = 127;	s++; }
 
 	// bits
@@ -202,11 +204,20 @@ int main (int argc, char** argv)
 			s = ook_negate > 0 ? ook_start+(ook_bit*i)+ook_0 : ook_start+(ook_bit*i)+ook_1;
 			printf("1");
 		}
+		// fill samples
 		while (s < ook_start+(ook_bit*(i+1))) { txbuffer[s] = 127; s++; }
 	}
+	if(s != ook_msg_size)
+		printf("P");
 	printf("\n");
 
 	printf("%d bits to transmit at %llu Hz\n", ook_nbr_bits, freq);
+	printf("Preamble:%d(%dus)   pause:%d(%dus)   bit:%d(%dus)   0:%d(%dus)   1:%d(%dus)\n",
+			ook_start, ook_start/8,
+			ook_pause, ook_pause/8,
+			ook_bit, ook_bit/8,
+			ook_0, ook_0/8,
+			ook_1, ook_1/8);
 
 	// Catch signals that we want to handle gracefully.
 	signal(SIGINT, &sigint_callback_handler);
