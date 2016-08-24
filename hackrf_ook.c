@@ -71,6 +71,8 @@ void sigint_callback_handler (int signum)
 }
 
 void printhelp(char *binname) {
+	printf("HackRF One ASK-OOK Emitter v0.0.1\n");
+	printf("Copyright (c) 2016 - Denis Bodor\n\n");
 	printf("Usage : %s [OPTIONS]\n", binname);
 	printf(" -s us                preamble duration in microseconds (default -s %d)\n", OOK_START/8);
 	printf(" -b us                overall bit duration in microseconds (default -b %d)\n", OOK_BIT/8);
