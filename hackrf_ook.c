@@ -5,6 +5,17 @@
  * Derived from W.B.Hill ( M1BKF) <bugs@wbh.org> code hackrf_beep.c
  * (https://github.com/rufty/hackrf_beep)
  *
+ * Tested remotes :
+ *
+ * Generic Remote (cf rtl_433) bouton 2 chan 1 on :
+ * ./hackrf_ook -s 0 -b 1700 -0 1284 -1 416 -p 10000 -m 1110101010111010101010101 -f 433920000 -g
+ * Tested with rtl_433 and real device
+ *
+ * Cardin S46 (S466) TX2 garage door remote :
+ * ./hackrf_ook
+ * or
+ * ./hackrf_ook -s 6156 -b 2104 -0 1368 -1 692 -p 30548 -m 010100100101011011110011 -f 27195000
+ * Tested with rtl_433 (not real garage door... yet)
  */
 
 #include <math.h>
@@ -27,6 +38,7 @@
 #define OOK_NEGATE		0
 #define OOK_DEFAULT_MSG "010100100101011011110011"
 #define OOK_CARRIER		27000		// carrier frequency
+#define OOK_PG			0			// send pulse first then gap for each bit
 
 // Transmit frequency
 uint64_t freq = OOK_FREQ;
@@ -48,6 +60,7 @@ int ook_nbr_bits = OOK_NBR_BITS;
 int ook_msg_size = OOK_MSG_SIZE;
 int ook_negate = OOK_NEGATE;
 int ook_carrier = OOK_CARRIER;
+int ook_pg = OOK_PG;
 
 const double tau = 2.0 * M_PI;
 
@@ -96,6 +109,7 @@ void printhelp(char *binname)
 	printf(" -p us                trailing duration after message in microseconds (default -p %d)\n", OOK_PAUSE/8);
 	printf(" -m binary_message    send this bits  (default -m %s)\n", OOK_DEFAULT_MSG);
 	printf(" -n                   bitwise NOT all bit\n");
+	printf(" -g                   send pulse first then gap for each bit (default to gap first)\n");
 	printf(" -h                   show this help\n");
 }
 
@@ -108,7 +122,7 @@ int main (int argc, char** argv)
 
 	double carrierAngle;
 
-	while ((retopt = getopt(argc, argv, "hf:c:s:b:0:1:p:m:n")) != -1) {
+	while ((retopt = getopt(argc, argv, "hf:c:s:b:0:1:p:m:gn")) != -1) {
 		switch (retopt) {
 			case 'f':
 				freq = (uint64_t)strtoll(optarg, &endptr, 10);
@@ -176,6 +190,10 @@ int main (int argc, char** argv)
 				bits = strdup(optarg);
 				opt++;
 				break;
+			case 'g':
+				ook_pg = 1;
+				opt++;
+				break;
 			case 'n':
 				ook_negate = 1;
 				opt++;
@@ -213,6 +231,7 @@ int main (int argc, char** argv)
 	// preamble
 	int c = 0;
 	int s = 0;
+	int pos;
 	// How many samples to have a full wave of the carrier freq ?
 	int full = samplerate/ook_carrier;
 	if(s < ook_start)
@@ -226,7 +245,7 @@ int main (int argc, char** argv)
 		c %= full; // loop on the carrier full wave
 	}
 
-	// compute samples
+	// compute samples for each bit
 	for (int i = 0; i < ook_nbr_bits; i++) {
 		if (bits[i] == '0') {
 			s = ook_negate > 0 ? ook_start+(ook_bit*i)+ook_1 : ook_start+(ook_bit*i)+ook_0;
@@ -236,16 +255,34 @@ int main (int argc, char** argv)
 			printf("1");
 		}
 		// fill samples
-		while (s < ook_start+(ook_bit*(i+1))) {
-			carrierAngle = c * tau / full;
-			txbufferI[s] = (int8_t)(127.0 * sin(carrierAngle));
-			txbufferQ[s] = (int8_t)(127.0 * cos(carrierAngle));
-			s++;
-			c++;
-			c %= full;
+		if(ook_pg == 1) {
+			// pulse first, then gap
+			// set s to the start of the bit then fill with samples to end of the pulse.
+			pos = ook_start+(ook_bit*i)-1;
+			while (pos < s) {
+				carrierAngle = c * tau / full;
+				txbufferI[pos] = (int8_t)(127.0 * sin(carrierAngle));
+				txbufferQ[pos] = (int8_t)(127.0 * cos(carrierAngle));
+				pos++;
+				c++;
+				c %= full;
+			}
+		} else {
+			// gap first, then pulse
+			// set s to the start position of pulse in the bit,
+			// then fill with samples to the end of a bit len.
+			while (s < ook_start+(ook_bit*(i+1))) {
+				carrierAngle = c * tau / full;
+				txbufferI[s] = (int8_t)(127.0 * sin(carrierAngle));
+				txbufferQ[s] = (int8_t)(127.0 * cos(carrierAngle));
+				s++;
+				c++;
+				c %= full;
+			}
 		}
 	}
-	if(s != ook_msg_size)
+
+	if(ook_pause)
 		printf("P");
 	printf("\n");
 
