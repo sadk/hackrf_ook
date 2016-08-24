@@ -14,6 +14,7 @@ Current available options are :
 - `-1 µs` : width of gap for bit 1 in microseconds (default -1 692)
 - `-p µs` : trailing duration after message in microseconds (default -p 30548)
 - `-m binary_message` : send this bits  (default -m 010100100101011011110011)
+- `-g` : send pulse first then gap for each bit (default to gap first, like in the drawing below)
 - `-n` : bitwise NOT all bit
 - `-h` : show this help
 
