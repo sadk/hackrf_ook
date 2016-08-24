@@ -24,6 +24,7 @@
 #define OOK_NBR_BITS	24		// nbr of bits in the message
 #define OOK_MSG_SIZE	OOK_START+(OOK_BIT*OOK_NBR_BITS)+OOK_PAUSE
 #define OOK_NEGATE		0
+#define OOK_DEFAULT_MSG "010100100101011011110011"
 
 // Transmit frequency
 const uint64_t freq = 27195000L;
@@ -76,7 +77,7 @@ void printhelp(char *binname) {
 	printf(" -0 us                width of gap for bit 0 in microseconds (default -0 %d)\n", OOK_0/8);
 	printf(" -1 us                width of gap for bit 1 in microseconds (default -1 %d)\n", OOK_1/8);
 	printf(" -p us                trailing duration after message in microseconds (default -p %d)\n", OOK_PAUSE/8);
-	printf(" -m binary_message    send this bits  (default -m %s)\n", bits);
+	printf(" -m binary_message    send this bits  (default -m %s)\n", OOK_DEFAULT_MSG);
 	printf(" -n                   bitwise NOT all bit\n");
 	printf(" -h                   show this help\n");
 }
@@ -160,7 +161,7 @@ int main (int argc, char** argv)
 	}
 
 	if(bits == NULL) 
-		bits = strdup("010100100101011011110011");
+		bits = strdup(OOK_DEFAULT_MSG);
 
 	ook_msg_size = ook_start+(ook_bit*ook_nbr_bits)+ook_pause;
 	printf("Allocating %d samples (%d bytes)\n", ook_msg_size, ook_msg_size*sizeof(int8_t));
