@@ -34,9 +34,20 @@ const uint32_t samplerate = 8000000;
 // Transmitter IF gain
 const unsigned int gain = 47;
 
-//int8_t txbuffer[OOK_MSG_SIZE] = { 0 };
-int8_t *txbuffer;
+int8_t *txbufferI;
+int8_t *txbufferQ;
 int bufferOffset;
+
+int ook_start = OOK_START;
+int ook_bit = OOK_BIT;
+int ook_0 = OOK_0;
+int ook_1 = OOK_1;
+int ook_pause = OOK_PAUSE;
+int ook_nbr_bits = OOK_NBR_BITS;
+int ook_msg_size = OOK_MSG_SIZE;
+int ook_negate = OOK_NEGATE;
+
+const double tau = 2.0 * M_PI;
 
 // bits to send
 char *bits;
@@ -54,11 +65,10 @@ int tx_callback(hackrf_transfer* transfer)
 	int i = 0;
 	while (i < count) {
 		// Not really sure what i'm doing here...
-		(transfer->buffer)[i++] = txbuffer[bufferOffset];  // I
-		//(transfer->buffer)[i++] = txbuffer[bufferOffset];  // Q
-		(transfer->buffer)[i++] = 0;  // Q
+		(transfer->buffer)[i++] = txbufferI[bufferOffset];  // I
+		(transfer->buffer)[i++] = txbufferQ[bufferOffset];  // Q
 		bufferOffset++;
-		bufferOffset %= OOK_MSG_SIZE; // loop on the buffer
+		bufferOffset %= ook_msg_size; // loop on the buffer
 	}
 	return 0 ;
 }
@@ -93,14 +103,8 @@ int main (int argc, char** argv)
 	int opt = 0;
 	char *endptr;
 
-	int ook_start = OOK_START;
-	int ook_bit = OOK_BIT;
-	int ook_0 = OOK_0;
-	int ook_1 = OOK_1;
-	int ook_pause = OOK_PAUSE;
-	int ook_nbr_bits = OOK_NBR_BITS;
-	int ook_msg_size = OOK_MSG_SIZE;
-	int ook_negate = OOK_NEGATE;
+
+	double carrierAngle;
 
 	while ((retopt = getopt(argc, argv, "hf:s:b:0:1:p:m:n")) != -1) {
 		switch (retopt) {
@@ -176,13 +180,15 @@ int main (int argc, char** argv)
 		bits = strdup(OOK_DEFAULT_MSG);
 
 	ook_msg_size = ook_start+(ook_bit*ook_nbr_bits)+ook_pause;
-	printf("Allocating %d int8_t samples (%d+%d+%d)\n", ook_msg_size, ook_start, (ook_bit*ook_nbr_bits), ook_pause);
-	txbuffer = malloc(ook_msg_size*sizeof(int8_t));
-	if (txbuffer == NULL) {
+	printf("Allocating %d int8_t samples (%d+(%d*%d)+%d)\n", ook_msg_size, ook_start, ook_bit, ook_nbr_bits, ook_pause);
+	txbufferI = malloc(ook_msg_size*sizeof(int8_t));
+	txbufferQ = malloc(ook_msg_size*sizeof(int8_t));
+	if (txbufferI == NULL || txbufferQ == NULL) {
 		printf("Error allocating memory!\n");
 		return(EXIT_FAILURE);
 	}
-	memset(txbuffer, 0, ook_msg_size*sizeof(int8_t));
+	memset(txbufferI, 0, ook_msg_size*sizeof(int8_t));
+	memset(txbufferQ, 0, ook_msg_size*sizeof(int8_t));
 
 	fprintf(stderr, "Precalculating lookup tables...\n");
 
@@ -190,12 +196,22 @@ int main (int argc, char** argv)
 	 * Precalc waveforms.
 	 */
 	// preamble
+	int c = 0;
 	int s = 0;
+	// How many sample to have a full wave for 27Khz carrier freq ?
+	int full = samplerate/27000;
 	if(s < ook_start)
 		printf("S");
-	while (s < ook_start) { txbuffer[s] = 127;	s++; }
+	while (s < ook_start) {
+		carrierAngle = c * tau / full;
+		txbufferI[s] = (int8_t)(127.0 * sin(carrierAngle));
+		txbufferQ[s] = (int8_t)(127.0 * cos(carrierAngle));
+		s++;
+		c++;
+		c %= full; // loop on the carrier full wave
+	}
 
-	// bits
+	// compute samples
 	for (int i = 0; i < ook_nbr_bits; i++) {
 		if (bits[i] == '0') {
 			s = ook_negate > 0 ? ook_start+(ook_bit*i)+ook_1 : ook_start+(ook_bit*i)+ook_0;
@@ -205,7 +221,14 @@ int main (int argc, char** argv)
 			printf("1");
 		}
 		// fill samples
-		while (s < ook_start+(ook_bit*(i+1))) { txbuffer[s] = 127; s++; }
+		while (s < ook_start+(ook_bit*(i+1))) {
+			carrierAngle = c * tau / full;
+			txbufferI[s] = (int8_t)(127.0 * sin(carrierAngle));
+			txbufferQ[s] = (int8_t)(127.0 * cos(carrierAngle));
+			s++;
+			c++;
+			c %= full;
+		}
 	}
 	if(s != ook_msg_size)
 		printf("P");
@@ -309,7 +332,8 @@ int main (int argc, char** argv)
 		hackrf_exit();
 	}
 
-	free(txbuffer);
+	free(txbufferI);
+	free(txbufferQ);
 
 	return EXIT_SUCCESS;
 }
