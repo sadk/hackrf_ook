@@ -33,6 +33,8 @@ __________| ____|   __| ____|   __| ____|    /  /    ____|   __|
 
 Bits configuration :
 
+Without -g option, gap first :
+
 |       |_____________|
 |       |             |
 |       |             |
@@ -43,5 +45,20 @@ Bits configuration :
 |       |             |
 |       |             |
 <- gap ->                   (-0 or -1 option)
+<----- bit width ----->     (-b option)
+
+
+with -g option, pulse first :
+
+|_____________|       |
+|             |       |
+|             |       |
+|             |       |
+|             |       |
+|             |       |
+|             |_______|
+|             |       |
+|             |       |
+              <- gap ->     (-0 or -1 option)
 <----- bit width ----->     (-b option)
 ```
