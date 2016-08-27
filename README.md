@@ -16,6 +16,7 @@ Current available options are :
 - `-m binary_message` : send this bits  (default -m 010100100101011011110011)
 - `-g` : send pulse first then gap for each bit (default to gap first, like in the drawing below)
 - `-n` : bitwise NOT all bit
+- `-d` : do nothing just print informations without transmitting with HackRF (no TX)
 - `-h` : show this help
 
 ```
