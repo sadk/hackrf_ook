@@ -43,6 +43,7 @@
 #define OOK_CARRIER		27000		// carrier frequency
 #define OOK_PG			0			// send pulse first then gap for each bit
 #define OOK_DO			1			// transmit with HackRF
+#define OOK_COUNTER		-1			// repeat message or not
 
 // Transmit frequency
 uint64_t freq = OOK_FREQ;
@@ -66,6 +67,7 @@ int ook_negate = OOK_NEGATE;
 int ook_carrier = OOK_CARRIER;
 int ook_pg = OOK_PG;
 int ook_do = OOK_DO;
+int ook_counter = OOK_COUNTER;
 
 const double tau = 2.0 * M_PI;
 
@@ -88,6 +90,13 @@ int tx_callback(hackrf_transfer* transfer)
 		(transfer->buffer)[i++] = txbufferI[bufferOffset];  // I
 		(transfer->buffer)[i++] = txbufferQ[bufferOffset];  // Q
 		bufferOffset++;
+		if(ook_counter >=0) {
+			if(bufferOffset == ook_msg_size) {
+				ook_counter--;
+				if(ook_counter < 1)
+					do_exit = true;
+			}
+		}
 		bufferOffset %= ook_msg_size; // loop on the buffer
 	}
 	return 0 ;
@@ -113,6 +122,7 @@ void printhelp(char *binname)
 	printf(" -1 us                width of gap for bit 1 in microseconds (default -1 %d)\n", OOK_1/8);
 	printf(" -p us                trailing duration after message in microseconds (default -p %d)\n", OOK_PAUSE/8);
 	printf(" -m binary_message    send this bits  (default -m %s)\n", OOK_DEFAULT_MSG);
+	printf(" -r number            repeat message approximately 'number' time (default repeat until Ctrl+C)\n");
 	printf(" -n                   bitwise NOT all bit\n");
 	printf(" -g                   send pulse first then gap for each bit (default to gap first)\n");
 	printf(" -d                   do nothing just print informations (no TX)\n");
@@ -128,7 +138,7 @@ int main (int argc, char** argv)
 
 	double carrierAngle;
 
-	while ((retopt = getopt(argc, argv, "f:c:s:b:0:1:p:m:gndh")) != -1) {
+	while ((retopt = getopt(argc, argv, "f:c:s:b:0:1:p:m:r:gndh")) != -1) {
 		switch (retopt) {
 			case 'f':
 				freq = (uint64_t)strtoll(optarg, &endptr, 10);
@@ -194,6 +204,14 @@ int main (int argc, char** argv)
 			case 'm':
 				ook_nbr_bits = strlen(optarg);
 				bits = strdup(optarg);
+				opt++;
+				break;
+			case 'r':
+				ook_counter = (int)strtol(optarg, &endptr, 10);
+				if (endptr == optarg || ook_counter <= 0) {
+					printf("You must specify a valid number\n");
+					return(EXIT_FAILURE);
+				}
 				opt++;
 				break;
 			case 'g':
@@ -317,6 +335,9 @@ int main (int argc, char** argv)
 			ook_0, ook_0/8,
 			ook_1, ook_1/8);
 
+	if(ook_counter > 0)
+		printf("Repeating the message %d time\n", ook_counter);
+
 	if(!ook_do) {
 		printf("Asked to not TX. Abort here.\n");
 		printf("Freeing I samples\n");
@@ -387,7 +408,11 @@ int main (int argc, char** argv)
 	}
 
 	/* Transmitting */
-	fprintf(stderr, "Transmitting, stop with Ctrl-C\n");
+	printf("Transmitting, stop with Ctrl-C");
+	if(ook_counter > 0)
+		printf(" ...or wait until TX is done");
+	printf("\n");
+
 	result = hackrf_start_tx(device, tx_callback, NULL);
 	if (result != HACKRF_SUCCESS) {
 		fprintf(stderr, "hackrf_start_tx() failed: %s (%d)\n", hackrf_error_name(result), result);
@@ -402,7 +427,7 @@ int main (int argc, char** argv)
 	/* Clean up and shut down */
 	result = hackrf_is_streaming(device);
 	if (do_exit) {
-		printf("\nUser cancel, exiting...\n");
+		printf("Exiting...\n");
 	} else {
 		fprintf(stderr, "\nExiting... hackrf_is_streaming() result: %s (%d)\n", hackrf_error_name(result), result);
 	}
