@@ -367,9 +367,8 @@ int main (int argc, char** argv)
 
 	// Set the gain
 	result = hackrf_set_txvga_gain(device, gain);
-	result |= hackrf_start_tx(device, tx_callback, NULL);
 	if (result != HACKRF_SUCCESS) {
-		fprintf(stderr, "hackrf_start_tx() failed: %s (%d)\n", hackrf_error_name(result), result);
+		fprintf(stderr, "hackrf_set_txvga_gain() failed: %s (%d)\n", hackrf_error_name(result), result);
 		return EXIT_FAILURE;
 	}
 
@@ -389,6 +388,11 @@ int main (int argc, char** argv)
 
 	/* Transmitting */
 	fprintf(stderr, "Transmitting, stop with Ctrl-C\n");
+	result = hackrf_start_tx(device, tx_callback, NULL);
+	if (result != HACKRF_SUCCESS) {
+		fprintf(stderr, "hackrf_start_tx() failed: %s (%d)\n", hackrf_error_name(result), result);
+		return EXIT_FAILURE;
+	}
 
 	// Spin until done or killed.
 	while ((hackrf_is_streaming(device) == HACKRF_TRUE) && (do_exit == false)) { 
