@@ -1,7 +1,7 @@
 TARGET  := hackrf_ook
 WARN    := -Wall 
-CFLAGS  := -O2 ${WARN} `pkg-config --cflags libhackrf`
-LDFLAGS := `pkg-config --libs libhackrf` -lm
+CFLAGS  := -O2 ${WARN} `pkg-config --cflags libhackrf glib-2.0`
+LDFLAGS := `pkg-config --libs libhackrf glib-2.0` -lm
 CC      := gcc
 
 

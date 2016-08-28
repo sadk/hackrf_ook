@@ -28,6 +28,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <stdbool.h>
+#include <glib.h>
 #include <libhackrf/hackrf.h>
 
 #define OOK_FREQ		27195000ULL	// transmit frequency
@@ -76,7 +77,7 @@ char *bits;
 
 static hackrf_device* device = NULL;
 
-volatile bool do_exit = false;
+GMainLoop *loop;
 
 // Giving data to the HackRF
 int tx_callback(hackrf_transfer* transfer)
@@ -93,8 +94,9 @@ int tx_callback(hackrf_transfer* transfer)
 		if(ook_counter >=0) {
 			if(bufferOffset == ook_msg_size) {
 				ook_counter--;
-				if(ook_counter < 1)
-					do_exit = true;
+				if(ook_counter < 1) {
+					g_main_loop_quit(loop);
+				}
 			}
 		}
 		bufferOffset %= ook_msg_size; // loop on the buffer
@@ -106,7 +108,7 @@ int tx_callback(hackrf_transfer* transfer)
 void sigint_callback_handler (int signum)
 {
 	fprintf(stderr, "Caught signal %d\n", signum);
-	do_exit = true;
+	g_main_loop_quit(loop);
 }
 
 void printhelp(char *binname)
@@ -122,7 +124,7 @@ void printhelp(char *binname)
 	printf(" -1 us                width of gap for bit 1 in microseconds (default -1 %d)\n", OOK_1/8);
 	printf(" -p us                trailing duration after message in microseconds (default -p %d)\n", OOK_PAUSE/8);
 	printf(" -m binary_message    send this bits  (default -m %s)\n", OOK_DEFAULT_MSG);
-	printf(" -r number            repeat message approximately 'number' time (default repeat until Ctrl+C)\n");
+	printf(" -r number            repeat message 'number' time (default repeat until Ctrl+C)\n");
 	printf(" -n                   bitwise NOT all bit\n");
 	printf(" -g                   send pulse first then gap for each bit (default to gap first)\n");
 	printf(" -d                   do nothing just print informations (no TX)\n");
@@ -135,7 +137,6 @@ int main (int argc, char** argv)
 	int retopt;
 	int opt = 0;
 	char *endptr;
-
 	double carrierAngle;
 
 	while ((retopt = getopt(argc, argv, "f:c:s:b:0:1:p:m:r:gndh")) != -1) {
@@ -347,6 +348,8 @@ int main (int argc, char** argv)
 		return EXIT_SUCCESS;
 	}
 
+	loop = g_main_loop_new(NULL, FALSE);
+
 	// Catch signals that we want to handle gracefully.
 	signal(SIGINT, &sigint_callback_handler);
 	signal(SIGILL, &sigint_callback_handler);
@@ -420,17 +423,12 @@ int main (int argc, char** argv)
 	}
 
 	// Spin until done or killed.
-	while ((hackrf_is_streaming(device) == HACKRF_TRUE) && (do_exit == false)) { 
-		sleep (1);
-	}
+	// while ((hackrf_is_streaming(device) == HACKRF_TRUE) && (do_exit == false)) { sleep (1); }
+	g_main_loop_run(loop);
 
 	/* Clean up and shut down */
-	result = hackrf_is_streaming(device);
-	if (do_exit) {
-		printf("Exiting...\n");
-	} else {
-		fprintf(stderr, "\nExiting... hackrf_is_streaming() result: %s (%d)\n", hackrf_error_name(result), result);
-	}
+	printf("Exiting...\n");
+	g_main_loop_unref(loop);
 
 	// Shut down the HackRF.
 	if (device != NULL) {
