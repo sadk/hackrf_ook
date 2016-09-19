@@ -91,10 +91,10 @@ int tx_callback(hackrf_transfer* transfer)
 		(transfer->buffer)[i++] = txbufferI[bufferOffset];  // I
 		(transfer->buffer)[i++] = txbufferQ[bufferOffset];  // Q
 		bufferOffset++;
-		if(ook_counter >=0) {
-			if(bufferOffset == ook_msg_size) {
+		if (ook_counter >=0) {
+			if (bufferOffset == ook_msg_size) {
 				ook_counter--;
-				if(ook_counter < 1) {
+				if (ook_counter < 1) {
 					g_main_loop_quit(loop);
 				}
 			}
@@ -105,7 +105,7 @@ int tx_callback(hackrf_transfer* transfer)
 }
 
 // Deal with interruptions.
-void sigint_callback_handler (int signum)
+void sigint_callback_handler(int signum)
 {
 	fprintf(stderr, "Caught signal %d\n", signum);
 	g_main_loop_quit(loop);
@@ -233,7 +233,7 @@ int main (int argc, char** argv)
 		}
 	}
 
-	if(bits == NULL) 
+	if (bits == NULL) 
 		bits = strdup(OOK_DEFAULT_MSG);
 
 	ook_msg_size = ook_start+(ook_bit*ook_nbr_bits)+ook_pause;
@@ -264,7 +264,7 @@ int main (int argc, char** argv)
 	int pos;
 	// How many samples to have a full wave of the carrier freq ?
 	int full = samplerate/ook_carrier;
-	if(s < ook_start)
+	if (s < ook_start)
 		printf("----");
 	while (s < ook_start) {
 		carrierAngle = c * tau / full;
@@ -278,26 +278,26 @@ int main (int argc, char** argv)
 	// compute samples for each bit
 	for (int i = 0; i < ook_nbr_bits; i++) {
 		if (bits[i] == '0') {
-			if(ook_negate > 0) {
+			if (ook_negate > 0) {
 				s = ook_start+(ook_bit*i)+ook_1;
-				if(ook_pg) printf("--_"); else printf("_--");
+				if (ook_pg) printf("--_"); else printf("_--");
 			} else {
 				s = ook_start+(ook_bit*i)+ook_0;
-				if(ook_pg) printf("-__"); else printf("__-");
+				if (ook_pg) printf("-__"); else printf("__-");
 			}
 			//s = ook_negate > 0 ? ook_start+(ook_bit*i)+ook_1 : ook_start+(ook_bit*i)+ook_0;
 		} else {
-			if(ook_negate > 0) {
+			if (ook_negate > 0) {
 				s = ook_start+(ook_bit*i)+ook_0;
-				if(ook_pg) printf("-__"); else printf("__-");
+				if (ook_pg) printf("-__"); else printf("__-");
 			} else {
 				s = ook_start+(ook_bit*i)+ook_1;
-				if(ook_pg) printf("--_"); else printf("_--");
+				if (ook_pg) printf("--_"); else printf("_--");
 			}
 			//s = ook_negate > 0 ? ook_start+(ook_bit*i)+ook_0 : ook_start+(ook_bit*i)+ook_1;
 		}
 		// fill samples
-		if(ook_pg == 1) {
+		if (ook_pg == 1) {
 			// pulse first, then gap
 			// set s to the start of the bit then fill with samples to end of the pulse.
 			pos = ook_start+(ook_bit*i);
@@ -324,7 +324,7 @@ int main (int argc, char** argv)
 		}
 	}
 
-	if(ook_pause)
+	if (ook_pause)
 		printf("_________");
 	printf("\n");
 
@@ -336,10 +336,10 @@ int main (int argc, char** argv)
 			ook_0, ook_0/8,
 			ook_1, ook_1/8);
 
-	if(ook_counter > 0)
+	if (ook_counter > 0)
 		printf("Repeating the message %d time\n", ook_counter);
 
-	if(!ook_do) {
+	if (!ook_do) {
 		printf("Asked to not TX. Abort here.\n");
 		printf("Freeing I samples\n");
 		free(txbufferI);
@@ -377,7 +377,7 @@ int main (int argc, char** argv)
 
 	// Set the sample rate
 	result = hackrf_set_sample_rate_manual(device, samplerate, 1);
-	if(result != HACKRF_SUCCESS) {
+	if (result != HACKRF_SUCCESS) {
 		fprintf(stderr, "hackrf_sample_rate_set() failed: %s (%d)\n", hackrf_error_name(result), result);
 		return EXIT_FAILURE;
 	}
@@ -412,7 +412,7 @@ int main (int argc, char** argv)
 
 	/* Transmitting */
 	printf("Transmitting, stop with Ctrl-C");
-	if(ook_counter > 0)
+	if (ook_counter > 0)
 		printf(" ...or wait until TX is done");
 	printf("\n");
 
